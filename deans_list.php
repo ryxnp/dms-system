@@ -2,141 +2,236 @@
 session_start();
 include('include/db.php');
 
-if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['Admin', 'Dean', 'Registrar'])) {
+if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['Admin','Dean','Registrar'])) {
     header('Location: landing.php');
     exit();
 }
 
-$successMessage = "";
-$errorMessage = "";
+$successMessage = '';
+$errorMessage   = '';
 
-// Handle Add to Dean's List
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_deans_list'])) {
-    $student_id = $_POST['student_id'];
-    $academic_year = $_POST['academic_year'];
-    $semester = $_POST['semester'];
-    $gpa = $_POST['gpa'];
-    $year_level = $_POST['year_level'];
-    $status = $_POST['status'];
-    $remarks = $_POST['remarks'] ?? '';
-    
-    $list_id = $_POST['list_id'] ?? null;
-    
-    try {
-        if ($list_id) {
-            // Update existing
-            $sql = "UPDATE dean_list SET academic_year=?, semester=?, gpa=?, year_level=?, status=?, remarks=?, verified_by=?, verified_date=NOW() WHERE list_id=?";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("ssdssiii", $academic_year, $semester, $gpa, $year_level, $status, $remarks, $_SESSION['user_id'], $list_id);
-        } else {
-            // Insert new
-            $sql = "INSERT INTO dean_list (student_id, academic_year, semester, gpa, year_level, status, remarks, verified_by, verified_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("issdsssi", $student_id, $academic_year, $semester, $gpa, $year_level, $status, $remarks, $_SESSION['user_id']);
-        }
-        
-        if ($stmt->execute()) {
-            $successMessage = $list_id ? "Dean's list entry updated successfully!" : "Student added to Dean's list successfully!";
-            
-            // Log audit trail
-            $action = $list_id ? 'Updated Dean\'s List Entry' : 'Added to Dean\'s List';
-            $audit = "INSERT INTO audit_trail (user_id, action, table_name, record_id, timestamp) VALUES (?, ?, 'dean_list', ?, NOW())";
-            $audit_stmt = $conn->prepare($audit);
-            $record_id = $list_id ?? $conn->insert_id;
-            $audit_stmt->bind_param("isi", $_SESSION['user_id'], $action, $record_id);
-            $audit_stmt->execute();
-        } else {
-            $errorMessage = "Error saving Dean's list entry.";
-        }
-    } catch (Exception $e) {
-        $errorMessage = "Error: " . $e->getMessage();
-    }
-}
+/* ===============================
+   FILTER DEFAULTS
+================================ */
+$search           = $_GET['search'] ?? '';
+$year_filter      = $_GET['academic_year'] ?? '';
+$semester_filter  = $_GET['semester'] ?? '';
+$status_filter    = $_GET['status'] ?? '';
 
-// Handle Delete
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_entry'])) {
-    $list_id = $_POST['list_id'];
-    $sql = "DELETE FROM dean_list WHERE list_id=?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $list_id);
-    
-    if ($stmt->execute()) {
-        $successMessage = "Entry removed successfully!";
+/* ===============================
+   ADD / UPDATE DEAN'S LIST
+================================ */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_deans_list'])) {
+
+    $student_id    = (int) ($_POST['student_id'] ?? 0); // user.user_id
+    $academic_year = $_POST['academic_year'] ?? '';
+    $semester      = $_POST['semester'] ?? '';
+    $gpa           = (float) ($_POST['gpa'] ?? 0);
+    $year_level    = $_POST['year_level'] ?? '';
+    $status        = $_POST['status'] ?? 'Pending';
+    $remarks       = $_POST['remarks'] ?? '';
+    $list_id       = $_POST['list_id'] ?? null;
+
+    if (!$student_id || !$academic_year || !$semester) {
+        $errorMessage = 'Missing required fields.';
     } else {
-        $errorMessage = "Error removing entry.";
+
+        // Get stud_id from profile
+        $p = $conn->prepare("SELECT stud_id FROM profile WHERE user_id=?");
+        $p->bind_param("i", $student_id);
+        $p->execute();
+        $profile = $p->get_result()->fetch_assoc();
+
+        if (!$profile) {
+            $errorMessage = 'Student profile not found.';
+        } else {
+
+            $stud_id = (int) $profile['stud_id'];
+
+            /* ===============================
+               DUPLICATE PREVENTION (INSERT ONLY)
+            ================================ */
+            if (!$list_id) {
+                $dup = $conn->prepare("
+                    SELECT list_id 
+                    FROM dean_list 
+                    WHERE stud_id = ?
+                      AND academic_year = ?
+                      AND semester = ?
+                ");
+                $dup->bind_param("iss", $stud_id, $academic_year, $semester);
+                $dup->execute();
+
+                if ($dup->get_result()->num_rows > 0) {
+                    $errorMessage = "This student is already on the Dean's List for $semester, $academic_year.";
+                }
+            }
+
+            if (!$errorMessage) {
+
+                if ($list_id) {
+                    /* ===== UPDATE ===== */
+                    $stmt = $conn->prepare("
+                        UPDATE dean_list SET
+                            academic_year=?,
+                            semester=?,
+                            gpa=?,
+                            year_level=?,
+                            status=?,
+                            remarks=?,
+                            verified_by=?,
+                            verified_date=NOW()
+                        WHERE list_id=?
+                    ");
+                    $stmt->bind_param(
+                        "ssdsssii",
+                        $academic_year,
+                        $semester,
+                        $gpa,
+                        $year_level,
+                        $status,
+                        $remarks,
+                        $_SESSION['user_id'],
+                        $list_id
+                    );
+                } else {
+                    /* ===== INSERT ===== */
+                    $stmt = $conn->prepare("
+                        INSERT INTO dean_list (
+                            student_id,
+                            stud_id,
+                            academic_year,
+                            semester,
+                            gpa,
+                            year_level,
+                            status,
+                            remarks,
+                            verified_by,
+                            verified_date
+                        ) VALUES (?,?,?,?,?,?,?,?,?,NOW())
+                    ");
+                    $stmt->bind_param(
+                        "iissdsssi",
+                        $student_id,
+                        $stud_id,
+                        $academic_year,
+                        $semester,
+                        $gpa,
+                        $year_level,
+                        $status,
+                        $remarks,
+                        $_SESSION['user_id']
+                    );
+                }
+
+                if ($stmt->execute()) {
+                    $successMessage = $list_id
+                        ? "Dean's List entry updated successfully."
+                        : "Student added to Dean's List successfully.";
+                } else {
+                    $errorMessage = "Failed to save entry.";
+                }
+            }
+        }
     }
 }
 
-// Get filters
-$year_filter = $_GET['academic_year'] ?? '';
-$semester_filter = $_GET['semester'] ?? '';
-$status_filter = $_GET['status'] ?? '';
-$search = $_GET['search'] ?? '';
+/* ===============================
+   DELETE
+================================ */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_entry'])) {
+    $list_id = (int) $_POST['list_id'];
+    $stmt = $conn->prepare("DELETE FROM dean_list WHERE list_id=?");
+    $stmt->bind_param("i", $list_id);
+    $stmt->execute();
+    $successMessage = "Entry removed successfully.";
+}
 
-// Build query with proper prepared statements
-$sql = "SELECT dl.*, p.firstName, p.lastName, p.student_number, p.course, u.email,
-        v.email as verifier_email
-        FROM dean_list dl
-        INNER JOIN user u ON dl.student_id = u.user_id
-        INNER JOIN profile p ON u.user_id = p.user_id
-        LEFT JOIN user v ON dl.verified_by = v.user_id
-        WHERE 1=1";
+/* ===============================
+   FETCH DEAN'S LIST
+================================ */
+$sql = "
+SELECT 
+    dl.*,
+    p.firstName,
+    p.lastName,
+    p.student_number,
+    p.course,
+    v.email AS verifier_email
+FROM dean_list dl
+INNER JOIN profile p ON dl.stud_id = p.stud_id
+LEFT JOIN user v ON dl.verified_by = v.user_id
+WHERE 1=1
+";
 
 $params = [];
-$types = "";
+$types  = "";
 
 if ($year_filter) {
-    $sql .= " AND dl.academic_year = ?";
+    $sql .= " AND dl.academic_year=?";
     $params[] = $year_filter;
     $types .= "s";
 }
 if ($semester_filter) {
-    $sql .= " AND dl.semester = ?";
+    $sql .= " AND dl.semester=?";
     $params[] = $semester_filter;
     $types .= "s";
 }
 if ($status_filter) {
-    $sql .= " AND dl.status = ?";
+    $sql .= " AND dl.status=?";
     $params[] = $status_filter;
     $types .= "s";
 }
 if ($search) {
     $sql .= " AND (p.firstName LIKE ? OR p.lastName LIKE ? OR p.student_number LIKE ?)";
-    $search_param = "%$search%";
-    $params[] = $search_param;
-    $params[] = $search_param;
-    $params[] = $search_param;
+    $like = "%$search%";
+    $params[] = $like;
+    $params[] = $like;
+    $params[] = $like;
     $types .= "sss";
 }
 
 $sql .= " ORDER BY dl.academic_year DESC, dl.semester DESC, dl.gpa DESC";
 
 $stmt = $conn->prepare($sql);
-if (!empty($params)) {
+if ($params) {
     $stmt->bind_param($types, ...$params);
 }
 $stmt->execute();
 $deans_list = $stmt->get_result();
 
-// Get statistics
-$stats_sql = "SELECT 
-    COUNT(*) as total,
-    SUM(CASE WHEN status='Verified' THEN 1 ELSE 0 END) as verified,
-    SUM(CASE WHEN status='Pending' THEN 1 ELSE 0 END) as pending,
-    AVG(gpa) as avg_gpa
-    FROM dean_list";
-$stats = $conn->query($stats_sql)->fetch_assoc();
+/* ===============================
+   STATS
+================================ */
+$stats = $conn->query("
+    SELECT
+        COUNT(*) AS total,
+        SUM(status='Verified') AS verified,
+        SUM(status='Pending') AS pending,
+        AVG(gpa) AS avg_gpa
+    FROM dean_list
+")->fetch_assoc();
 
-// Get all students for dropdown
-$students = $conn->query("SELECT u.user_id, p.student_number, p.firstName, p.lastName, p.year_level 
-                          FROM user u 
-                          INNER JOIN profile p ON u.user_id = p.user_id 
-                          WHERE u.role = 'Student' 
-                          ORDER BY p.lastName, p.firstName");
+/* ===============================
+   STUDENTS FOR MODAL
+================================ */
+$students = $conn->query("
+    SELECT 
+        u.user_id,
+        p.student_number,
+        p.firstName,
+        p.lastName,
+        p.year_level
+    FROM user u
+    INNER JOIN profile p ON u.user_id = p.user_id
+    WHERE u.role='Student'
+    ORDER BY p.lastName, p.firstName
+");
 
-$user_name = $_SESSION['user_name'] ?? $_SESSION['role'];
-$user_initial = strtoupper(substr($user_name, 0, 1));
 ?>
+
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
