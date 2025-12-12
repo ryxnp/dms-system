@@ -12,7 +12,7 @@ if (!defined('DB_CONFIG_LOADED')) {
 // Database credentials
 $servername = "localhost";
 $username = "root";
-$password = "";
+$password = "9320718a";
 $dbname = "feu_roosevelt_dms";
 
 // Connecting to database

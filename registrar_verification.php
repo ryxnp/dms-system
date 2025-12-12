@@ -1,6 +1,6 @@
 <?php
 session_start();
-include('db.php');
+include('include/db.php');
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] != 'Registrar') {
     header('Location: landing.php');
@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['verify_action'])) {
         }
     } elseif ($type == 'scholarship') {
         $status = $action == 'approve' ? 'Approved' : 'Rejected';
-        $sql = "UPDATE scholarship_applications SET status=?, remarks=?, reviewed_by=?, review_date=NOW() WHERE id=?";
+        $sql = "UPDATE scholarship_application SET status=?, remarks=?, reviewed_by=?, review_date=NOW() WHERE id=?";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("ssii", $status, $remarks, $_SESSION['user_id'], $id);
         
@@ -81,7 +81,7 @@ $scholarship_query = "SELECT
     (SELECT COUNT(*) FROM document WHERE student_id = sa.student_id AND doc_type = 'Transcript' AND status = 'Approved') as has_transcript,
     (SELECT COUNT(*) FROM document WHERE student_id = sa.student_id AND doc_type = 'Dean\\'s List Certificate' AND status = 'Approved') as has_dl_cert,
     (SELECT COUNT(*) FROM document WHERE student_id = sa.student_id AND doc_type = 'Enrollment Proof' AND status = 'Approved') as has_enrollment
-    FROM scholarship_applications sa
+    FROM scholarship_application sa
     INNER JOIN profile p ON sa.student_id = p.user_id
     LEFT JOIN dean_list dl ON sa.student_id = dl.student_id 
         AND dl.academic_year = sa.academic_year 

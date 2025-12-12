@@ -1,6 +1,6 @@
 <?php
 session_start();
-include('db.php');
+include('include/db.php');
 
 if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['Admin', 'Dean', 'Registrar'])) {
     header('Location: landing.php');

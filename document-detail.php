@@ -104,6 +104,7 @@ function time_ago($datetime) {
     rel="stylesheet"
   />
   <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="assets/css/deans_list.css">
 </head>
 <body>
 <?php include('include/header.php'); ?>

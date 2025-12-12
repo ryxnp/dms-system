@@ -1,6 +1,6 @@
 <?php
 session_start();
-include('db.php');
+include('include/db.php');
 
 // Restrict access to Guidance only
 if (!isset($_SESSION['role']) || $_SESSION['role'] != 'Guidance') {

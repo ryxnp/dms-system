@@ -1,109 +1,325 @@
 <?php
 session_start();
-require_once('include/db.php');
+include('include/db.php');
 
-// Restrict access to Admins only
-if (!isset($_SESSION['role']) || $_SESSION['role'] != 'Admin') {
+if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'Admin') {
     header('Location: landing.php');
     exit();
 }
 
-// FIX: Ensure sidebar receives username
-$user_name = $_SESSION['user_name'] ?? 'Admin';
+$search = $_GET['search'] ?? '';
+$year   = $_GET['year'] ?? '';
 
-// Fetch document counts
-$totalFiles = 0;
-$pendingFiles = 0;
-$approvedFiles = 0;
-$declinedFiles = 0;
-$documents = [];
+$sql = "
+SELECT 
+    u.user_id,
+    p.stud_id,
+    p.student_number,
+    CONCAT(p.lastName, ', ', p.firstName) AS name,
+    p.course,
+    p.year_level,
+    COUNT(d.doc_id) AS total_docs
+FROM user u
+INNER JOIN profile p ON u.user_id = p.user_id
+LEFT JOIN document d ON d.stud_id = p.stud_id
+WHERE u.role = 'Student'
+";
 
-// Query: Count all documents
-$sql = "SELECT 
-            COUNT(*) AS total,
-            SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) AS pending,
-            SUM(CASE WHEN status = 'Approved' THEN 1 ELSE 0 END) AS approved,
-            SUM(CASE WHEN status = 'Declined' THEN 1 ELSE 0 END) AS declined
-        FROM document";
+$params = [];
+$types  = "";
 
-$result = $conn->query($sql);
-if ($result && $row = $result->fetch_assoc()) {
-    $totalFiles = $row['total'];
-    $pendingFiles = $row['pending'];
-    $approvedFiles = $row['approved'];
-    $declinedFiles = $row['declined'];
+if ($search) {
+    $sql .= " AND (p.firstName LIKE ? OR p.lastName LIKE ? OR p.student_number LIKE ?)";
+    $like = "%$search%";
+    $params = array_merge($params, [$like, $like, $like]);
+    $types .= "sss";
 }
 
-// Query: Fetch documents with student name
-$sql = "SELECT d.*, p.name AS student_name
-        FROM document d
-        INNER JOIN profile p ON d.stud_id = p.stud_id
-        ORDER BY d.upload_date DESC";
-
-$result = $conn->query($sql);
-if ($result && $result->num_rows > 0) {
-    while ($row = $result->fetch_assoc()) {
-        $documents[] = $row;
-    }
+if ($year) {
+    $sql .= " AND p.year_level = ?";
+    $params[] = $year;
+    $types   .= "s";
 }
+
+$sql .= "
+GROUP BY 
+    u.user_id,
+    p.stud_id,
+    p.student_number,
+    p.firstName,
+    p.lastName,
+    p.course,
+    p.year_level
+ORDER BY p.lastName
+";
+
+$stmt = $conn->prepare($sql);
+if ($params) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$students = $stmt->get_result();
 ?>
-
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Docu Dashboard</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet"/>
-  <link rel="stylesheet" href="css/styles.css">
+<meta charset="UTF-8">
+<title>FEU Roosevelt - Documents</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="assets/css/documents.css">
 </head>
 <body>
-<?php include('include/header.php'); ?>
-<div class="container">
-<?php include('include/sidebar.php'); ?>
-    <main>
-      <section class="stats-grid">
-        <div class="stat-card"><p>Total Student Files</p><p><?php echo $totalFiles; ?></p></div>
-        <div class="stat-card"><p>Pending Verifications</p><p class="stat-yellow"><?php echo $pendingFiles; ?></p></div>
-        <div class="stat-card"><p>Approved Files</p><p class="stat-green"><?php echo $approvedFiles; ?></p></div>
-        <div class="stat-card"><p>Declined Files</p><p class="stat-red"><?php echo $declinedFiles; ?></p></div>
-      </section>
 
-      <section class="table-container">
-        <h2>Student Files</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>File ID</th>
-              <th>Student Name</th>
-              <th>File Type</th>
-              <th>Date Submitted</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($documents as $doc): ?>
-            <tr onclick="window.location.href='document-detail.php?doc_id=<?php echo $doc['doc_id']; ?>'">
-              <td><?php echo htmlspecialchars($doc['doc_id']); ?></td>
-              <td><?php echo htmlspecialchars($doc['student_name']); ?></td> <!-- FIXED -->
-              <td><?php echo htmlspecialchars($doc['doc_type']); ?></td>
-              <td><?= date('m/d/Y h:i A', strtotime($doc['upload_date'])) ?></td>
-              <td class="<?php 
-                  echo ($doc['status'] == 'Pending') ? 'status-pending' : 
-                      (($doc['status'] == 'Approved') ? 'status-approved' : 
-                      (($doc['status'] == 'Declined') ? 'status-declined' : 'status-inreview')); ?>">
-                <?php echo htmlspecialchars($doc['status']); ?>
-              </td>
-              <td>
-                <button class="action-button" onclick="event.stopPropagation(); window.location.href='document-detail.php?doc_id=<?php echo $doc['doc_id']; ?>'">Review</button>
-              </td>
-            </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      </section>
-    </main>
+<?php require_once 'include/header.php'; ?>
+
+<div class="container">
+<?php require_once 'include/sidebar.php'; ?>
+
+<main class="main-content">
+
+<h1 class="page-title">
+  <i class="fas fa-folder"></i> Student Documents
+</h1>
+
+<div class="toolbar">
+  <div class="search-box">
+    <i class="fas fa-search"></i>
+    <input id="searchInput" placeholder="Search students..." value="<?= htmlspecialchars($search) ?>">
   </div>
+
+  <select id="yearFilter">
+    <option value="">All Year Levels</option>
+    <option <?= $year=='1st Year'?'selected':'' ?>>1st Year</option>
+    <option <?= $year=='2nd Year'?'selected':'' ?>>2nd Year</option>
+    <option <?= $year=='3rd Year'?'selected':'' ?>>3rd Year</option>
+    <option <?= $year=='4th Year'?'selected':'' ?>>4th Year</option>
+  </select>
+</div>
+
+<div class="content-card">
+<div class="table-responsive">
+<table>
+<thead>
+<tr>
+  <th>Student No</th>
+  <th>Name</th>
+  <th>Course</th>
+  <th>Year</th>
+  <th>Total Docs</th>
+  <th>Actions</th>
+</tr>
+</thead>
+<tbody>
+
+<?php while($s = $students->fetch_assoc()): ?>
+<tr>
+  <td><?= htmlspecialchars($s['student_number']) ?></td>
+  <td><?= htmlspecialchars($s['name']) ?></td>
+  <td><?= htmlspecialchars($s['course']) ?></td>
+  <td><?= htmlspecialchars($s['year_level']) ?></td>
+  <td><?= (int)$s['total_docs'] ?></td>
+  <td>
+    <button class="btn btn-primary btn-sm"
+      onclick="openDocumentsModal(
+        <?= (int)$s['user_id'] ?>,
+        '<?= htmlspecialchars($s['stud_id'], ENT_QUOTES) ?>',
+        '<?= htmlspecialchars($s['name'], ENT_QUOTES) ?>'
+      )">
+      <i class="fas fa-folder-open"></i> View Documents
+    </button>
+  </td>
+</tr>
+<?php endwhile; ?>
+
+</tbody>
+</table>
+</div>
+</div>
+
+</main>
+</div>
+
+<!-- ===================== DOCUMENTS MODAL ===================== -->
+<div id="documentsModal" class="modal">
+<div class="modal-content large">
+<div class="modal-header">
+  <h2 id="studentTitle"></h2>
+  <button class="close-btn" onclick="closeDocumentsModal()">&times;</button>
+</div>
+
+<div id="documentsContainer"></div>
+
+<button class="btn btn-success" onclick="openDocumentForm()">
+  <i class="fas fa-plus"></i> Add Document
+</button>
+</div>
+</div>
+
+<!-- ===================== ADD / EDIT DOCUMENT MODAL ===================== -->
+<div id="documentFormModal" class="modal">
+<div class="modal-content">
+<div class="modal-header">
+  <h2 id="formTitle">Add Document</h2>
+  <button class="close-btn" onclick="closeFormModal()">&times;</button>
+</div>
+
+<form id="documentForm" enctype="multipart/form-data">
+<input type="hidden" name="doc_id" id="doc_id">
+<input type="hidden" name="stud_id" id="stud_id">
+<input type="hidden" name="student_id" id="student_id">
+
+<div class="form-group">
+  <label>Document Name</label>
+  <input name="doc_name" required>
+</div>
+
+<div class="form-group">
+  <label>Document Type</label>
+  <select name="doc_type" required>
+    <option value="">Select Document Type</option>
+    <option>Grades</option>
+    <option>ID</option>
+    <option>Certificate</option>
+    <option>Enrollment Form</option>
+    <option>Others</option>
+  </select>
+</div>
+
+<div class="form-group">
+  <label>Description</label>
+  <textarea name="doc_desc"></textarea>
+</div>
+
+<div class="form-group">
+  <label>Status</label>
+  <select name="status">
+    <option>Pending</option>
+    <option>Approved</option>
+    <option>Declined</option>
+  </select>
+</div>
+
+<div class="form-group">
+  <label>Upload File</label>
+  <input type="file" name="file">
+</div>
+
+<div class="form-actions">
+  <button class="btn btn-success"><i class="fas fa-save"></i> Save</button>
+  <button type="button" class="btn btn-danger" onclick="closeFormModal()">Cancel</button>
+</div>
+</form>
+</div>
+</div>
+
+<!-- IMAGE VIEWER -->
+<div id="imageViewer" class="image-viewer" onclick="closeImageViewer()">
+  <span class="close-viewer">&times;</span>
+  <img id="viewerImage">
+</div>
+
+<script>
+let currentUserId = null;
+let currentStudId = null;
+
+/* =========================== STUDENT DOCUMENTS =========================== */
+function openDocumentsModal(userId, studId, name) {
+  currentUserId = userId;
+  currentStudId = studId;
+
+  document.getElementById('student_id').value = userId;
+  document.getElementById('stud_id').value = studId;
+
+  document.getElementById('studentTitle').innerText = name;
+  document.getElementById('documentsModal').classList.add('active');
+  loadDocuments();
+}
+
+function closeDocumentsModal() {
+  document.getElementById('documentsModal').classList.remove('active');
+}
+
+function loadDocuments() {
+  fetch(`include/fetch_student_documents.php?student_id=${currentUserId}`)
+    .then(res => res.text())
+    .then(html => {
+      document.getElementById('documentsContainer').innerHTML = html;
+    });
+}
+
+/* =========================== ADD / EDIT =========================== */
+function openDocumentForm(doc = null) {
+  document.getElementById('documentForm').reset();
+  document.getElementById('doc_id').value = '';
+  document.getElementById('stud_id').value = currentStudId;
+  document.getElementById('student_id').value = currentUserId;
+
+  document.getElementById('formTitle').innerText =
+    doc ? 'Edit Document' : 'Add Document';
+
+  if (doc) {
+    document.getElementById('doc_id').value = doc.doc_id;
+    document.querySelector('[name="doc_name"]').value = doc.doc_name;
+    document.querySelector('[name="doc_type"]').value = doc.doc_type;
+    document.querySelector('[name="doc_desc"]').value = doc.doc_desc || '';
+    document.querySelector('[name="status"]').value = doc.status;
+  }
+
+  document.getElementById('documentFormModal').classList.add('active');
+}
+
+function closeFormModal() {
+  document.getElementById('documentFormModal').classList.remove('active');
+}
+
+document.getElementById('documentForm').addEventListener('submit', e => {
+  e.preventDefault();
+  fetch('include/process_document.php', {
+    method: 'POST',
+    body: new FormData(e.target)
+  }).then(() => {
+    closeFormModal();
+    loadDocuments();
+  });
+});
+
+/* =========================== DELETE =========================== */
+function deleteDocument(id) {
+  if (!confirm('Delete this document?')) return;
+  fetch('include/process_document.php', {
+    method: 'POST',
+    headers: {'Content-Type':'application/x-www-form-urlencoded'},
+    body: `delete_document=1&doc_id=${id}`
+  }).then(() => loadDocuments());
+}
+
+/* =========================== FILTERING =========================== */
+function applyFilters() {
+  const s = document.getElementById('searchInput').value;
+  const y = document.getElementById('yearFilter').value;
+  location = `documents.php?search=${encodeURIComponent(s)}&year=${encodeURIComponent(y)}`;
+}
+
+document.getElementById('searchInput')
+  .addEventListener('input', () => setTimeout(applyFilters, 400));
+document.getElementById('yearFilter')
+  .addEventListener('change', applyFilters);
+
+
+function openImageViewer(src) {
+  const viewer = document.getElementById('imageViewer');
+  const img = document.getElementById('viewerImage');
+  img.src = src;
+  viewer.classList.add('active');
+}
+
+function closeImageViewer() {
+  document.getElementById('imageViewer').classList.remove('active');
+}
+
+
+</script>
+
 </body>
 </html>

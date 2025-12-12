@@ -1,6 +1,6 @@
 <?php
 session_start();
-include('db.php');
+include('include/db.php');
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] != 'Registrar') {
     header('Location: landing.php');

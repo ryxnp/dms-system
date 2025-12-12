@@ -1,6 +1,6 @@
 <?php
 session_start();
-include('db.php');
+include('include/db.php');
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] != 'Dean') {
     header('Location: landing.php');
@@ -78,13 +78,13 @@ $status_filter = $_GET['status'] ?? 'Under Review';
 // Get Dean's List entries
 $sql = "SELECT dl.*, p.firstName, p.lastName, p.student_number, p.course, p.year_level,
         e.status as enrollment_status,
-        v.firstName as verified_by_name
+        p.firstName as verified_by_name
         FROM dean_list dl
         INNER JOIN profile p ON dl.student_id = p.user_id
         LEFT JOIN student_enrollment e ON dl.student_id = e.student_id 
             AND e.academic_year = dl.academic_year 
             AND e.semester = dl.semester
-        LEFT JOIN users v ON dl.verified_by = v.user_id
+        LEFT JOIN user v ON dl.verified_by = v.user_id
         WHERE dl.academic_year = '$academic_year' 
         AND dl.semester = '$semester'";
 

@@ -1,6 +1,6 @@
 <?php
 session_start();
-include('db.php');
+include('include/db.php');
 
 // Restrict access to Guidance only
 if (!isset($_SESSION['role']) || $_SESSION['role'] != 'Guidance') {
@@ -150,14 +150,14 @@ $query = "
            p.student_number,
            p.course,
            p.year_level,
-           p.email,
-           p.contact_number,
+           u.email,
+           p.contactNumber,
            dl.gpa,
-           u.name as reviewer_name
+           p.name as reviewer_name
     FROM scholarship_application sa
     LEFT JOIN profile p ON sa.student_id = p.stud_id
     LEFT JOIN dean_list dl ON sa.student_id = dl.student_id
-    LEFT JOIN users u ON sa.guidance_reviewer_id = u.user_id
+    LEFT JOIN user u ON sa.guidance_reviewed_by = u.user_id
     WHERE $whereClause
     ORDER BY 
         CASE 
