@@ -153,6 +153,10 @@ $students = $stmt->get_result();
 <button class="btn btn-success" onclick="openDocumentForm()">
   <i class="fas fa-plus"></i> Add Document
 </button>
+<button class="btn btn-secondary" onclick="printDocuments()">
+  <i class="fas fa-print"></i> Print
+</button>
+
 </div>
 </div>
 
@@ -202,7 +206,11 @@ $students = $stmt->get_result();
 
 <div class="form-group">
   <label>Upload File</label>
-  <input type="file" name="file">
+  <input 
+  type="file" 
+  name="file"
+  accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+>
 </div>
 
 <div class="form-actions">
@@ -318,6 +326,67 @@ function closeImageViewer() {
   document.getElementById('imageViewer').classList.remove('active');
 }
 
+function printDocuments() {
+  const container = document.getElementById('documentsContainer').cloneNode(true);
+  const title = document.getElementById('studentTitle').innerText;
+
+  // Convert relative image paths to absolute
+  container.querySelectorAll('img').forEach(img => {
+    img.src = new URL(img.getAttribute('src'), window.location.href).href;
+  });
+
+  const printWindow = window.open('', '', 'width=900,height=650');
+
+  printWindow.document.write(`
+    <html>
+    <head>
+      <title>Student Documents</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          padding: 20px;
+        }
+        h2 {
+          margin-bottom: 15px;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+        th, td {
+          border: 1px solid #ccc;
+          padding: 8px;
+          text-align: left;
+        }
+        th {
+          background: #f3f3f3;
+        }
+        img {
+          max-width: 80px;
+          height: auto;
+        }
+        button, a.btn {
+          display: none !important;
+        }
+      </style>
+    </head>
+    <body>
+      <h2>${title} – Documents</h2>
+      ${container.innerHTML}
+    </body>
+    </html>
+  `);
+
+  printWindow.document.close();
+
+  // ⏳ Wait for images before printing
+  printWindow.onload = () => {
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 300);
+  };
+}
 
 </script>
 

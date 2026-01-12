@@ -64,3 +64,13 @@
   border-radius: 4px;
   cursor: pointer;
 }
+
+@media print {
+  .btn, .actions, .close-btn {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+  }
+}

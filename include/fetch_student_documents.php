@@ -76,14 +76,43 @@ if ($docs->num_rows === 0) {
 <tr>
   <td>
     <?php if ($isImage): ?>
-      <img 
-        src="<?= $fileUrl ?>" 
-        class="doc-thumb"
-        onclick="openImageViewer('<?= $fileUrl ?>')"
-      >
-    <?php else: ?>
-      <i class="fas fa-file-alt file-icon"></i>
-    <?php endif; ?>
+
+  <img 
+    src="<?= $fileUrl ?>" 
+    class="doc-thumb"
+    onclick="openImageViewer('<?= $fileUrl ?>')"
+  >
+
+<?php elseif ($ext === 'pdf'): ?>
+
+  <a href="<?= $fileUrl ?>" target="_blank" class="file-link">
+    <i class="fas fa-file-pdf file-icon pdf"></i>
+    <span>View PDF</span>
+  </a>
+
+<?php elseif (in_array($ext, ['doc','docx'])): ?>
+
+  <a href="<?= $fileUrl ?>" target="_blank" class="file-link">
+    <i class="fas fa-file-word file-icon word"></i>
+    <span>Word File</span>
+  </a>
+
+<?php elseif (in_array($ext, ['xls','xlsx'])): ?>
+
+  <a href="<?= $fileUrl ?>" target="_blank" class="file-link">
+    <i class="fas fa-file-excel file-icon excel"></i>
+    <span>Excel File</span>
+  </a>
+
+<?php else: ?>
+
+  <a href="<?= $fileUrl ?>" download class="file-link">
+    <i class="fas fa-file file-icon"></i>
+    <span>Download</span>
+  </a>
+
+<?php endif; ?>
+
   </td>
 
   <td><?= htmlspecialchars($d['doc_type']) ?></td>
